@@ -107,6 +107,7 @@ func (ts *TripleStore) RemoveTriple(triple *graph.Triple) {
 }
 
 // Given an opaque token, returns the triple for that token from the store.
+// TODO: Token here is just the line number, given as an int64
 func (ts *TripleStore) Triple(value graph.Value) *graph.Triple {
 	log.Println("STUB: Triple")
 	triple := graph.Triple{Subject: "Stub", Predicate: "requested", Object: fmt.Sprintf("%+v", value)}
