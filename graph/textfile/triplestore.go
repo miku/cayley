@@ -3,11 +3,14 @@
 package textfile
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/graph/iterator"
+	"io/ioutil"
 	"log"
 	"os"
+	"strings"
 )
 
 type TripleStore struct {
@@ -45,17 +48,62 @@ func NewTripleStore(path string) *TripleStore {
 // Add a triple to the store.
 func (ts *TripleStore) AddTriple(triple *graph.Triple) {
 	log.Println("STUB: AddTriple")
+	// open file and append at the end
+	file, err := os.OpenFile(ts.Path, os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	text := fmt.Sprintf("%s\t%s\t%s\t%s\n", triple.Subject, triple.Predicate, triple.Object, triple.Provenance)
+	if _, err = file.WriteString(text); err != nil {
+		panic(err)
+	}
+	log.Printf("Added %s.\n", triple)
 }
 
 // Add a set of triples to the store, atomically if possible.
 func (ts *TripleStore) AddTripleSet(triples []*graph.Triple) {
 	log.Println("STUB: AddTripleSet")
+	for _, triple := range triples {
+		ts.AddTriple(triple)
+	}
 }
 
 // Removes a triple matching the given one  from the file,
 // if it exists. Does nothing otherwise.
 func (ts *TripleStore) RemoveTriple(triple *graph.Triple) {
 	log.Println("STUB: RemoveTriple")
+
+	// input file
+	file, err := os.Open(ts.Path)
+	if err != nil {
+		panic(err)
+	}
+	defer file.Close()
+	scanner := bufio.NewScanner(file)
+
+	// output file
+	output, err := ioutil.TempFile("", "cayley-textfile-")
+	if err != nil {
+		panic(err)
+	}
+	defer output.Close()
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Split(line, "\t")
+		if !(parts[0] == triple.Subject &&
+			parts[1] == triple.Predicate &&
+			parts[2] == triple.Object &&
+			parts[3] == triple.Provenance) {
+			output.WriteString(line)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+
 }
 
 // Given an opaque token, returns the triple for that token from the store.
