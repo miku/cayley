@@ -39,6 +39,8 @@ func Load(ts graph.TripleStore, cfg *config.Config, triplePath string, firstTime
 		LoadTriplesFromFileInto(ts, triplePath, cfg.LoadSize)
 	case "mem":
 		LoadTriplesFromFileInto(ts, triplePath, cfg.LoadSize)
+	case "text":
+		LoadTriplesFromFileInto(ts, triplePath, cfg.LoadSize)
 	}
 
 }

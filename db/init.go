@@ -18,6 +18,7 @@ import (
 	"github.com/google/cayley/config"
 	"github.com/google/cayley/graph/leveldb"
 	"github.com/google/cayley/graph/mongo"
+	"github.com/google/cayley/graph/textfile"
 )
 
 func Init(cfg *config.Config, triplePath string) bool {
@@ -30,6 +31,8 @@ func Init(cfg *config.Config, triplePath string) bool {
 		created = leveldb.CreateNewLevelDB(dbpath)
 	case "mem":
 		return true
+	case "text":
+		created = textfile.CreateNewTripleStore(dbpath)
 	}
 	if created && triplePath != "" {
 		ts := Open(cfg)

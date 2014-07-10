@@ -22,6 +22,7 @@ import (
 	"github.com/google/cayley/graph/leveldb"
 	"github.com/google/cayley/graph/memstore"
 	"github.com/google/cayley/graph/mongo"
+	"github.com/google/cayley/graph/textfile"
 )
 
 func Open(cfg *config.Config) graph.TripleStore {
@@ -35,6 +36,8 @@ func Open(cfg *config.Config) graph.TripleStore {
 		ts := memstore.NewTripleStore()
 		Load(ts, cfg, cfg.DatabasePath, true)
 		return ts
+	case "text":
+		return textfile.NewTripleStore(cfg.DatabasePath)
 	}
 	panic("Unsupported database backend " + cfg.DatabaseType)
 }
