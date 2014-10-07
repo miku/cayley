@@ -142,7 +142,7 @@ func (qs *QuadStore) ValueOf(s string) graph.Value {
 }
 
 func (qs *QuadStore) NameOf(k graph.Value) string {
-	return "noname"
+	return fmt.Sprintf("value: %s", k)
 }
 
 func (qs *QuadStore) Horizon() int64 {

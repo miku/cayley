@@ -59,7 +59,7 @@ func (it *Iterator) TagResults(dst map[string]graph.Value) {
 
 func (it *Iterator) Next() bool {
 	log.Println("calling Next")
-	it.result = "123"
+	it.result = fmt.Sprintf("result at offset: %d", it.offset)
 	if it.offset < 10 {
 		it.offset++
 		return true
