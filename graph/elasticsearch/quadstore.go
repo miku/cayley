@@ -130,7 +130,7 @@ func (qs *QuadStore) QuadIterator(d quad.Direction, val graph.Value) graph.Itera
 }
 
 func (qs *QuadStore) NodesAllIterator() graph.Iterator {
-	return nil
+	return NewAllIterator(qs)
 }
 
 func (qs *QuadStore) QuadsAllIterator() graph.Iterator {
