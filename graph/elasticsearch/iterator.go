@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/belogik/goes"
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/graph/iterator"
 )
@@ -15,15 +16,17 @@ func init() {
 var esType graph.Type
 
 type Iterator struct {
-	uid    uint64
-	tags   graph.Tagger
-	offset int64
-	hash   string
-	name   string
-	qs     *QuadStore
-	size   int64
-	result graph.Value
-	isAll  bool
+	uid          uint64
+	tags         graph.Tagger
+	offset       int64
+	hash         string
+	name         string
+	qs           *QuadStore
+	size         int64
+	result       graph.Value
+	isAll        bool
+	scanResponse goes.Response
+	hits         chan goes.Hit
 }
 
 func (it *Iterator) UID() uint64 {
@@ -59,6 +62,7 @@ func (it *Iterator) TagResults(dst map[string]graph.Value) {
 
 func (it *Iterator) Next() bool {
 	log.Println("calling Next")
+	fmt.Println(<-it.hits)
 	it.result = fmt.Sprintf("result at offset: %d", it.offset)
 	if it.offset < 10 {
 		it.offset++
@@ -129,13 +133,51 @@ func (it *Iterator) Stats() graph.IteratorStats {
 	}
 }
 
+func scrollWrap(r goes.Response) chan goes.Hit {
+	hits := make(chan goes.Hit)
+	conn := goes.NewConnection("localhost", "9200")
+	go func() {
+		for {
+			scrollResponse, err := conn.Scroll(r.ScrollId, "30")
+			if err != nil {
+				log.Fatalln(err)
+			}
+			if len(scrollResponse.Hits.Hits) == 0 {
+				break
+			}
+			for _, hit := range scrollResponse.Hits.Hits {
+				hits <- hit
+			}
+		}
+		close(hits)
+	}()
+	return hits
+}
+
 func NewAllIterator(qs *QuadStore) *Iterator {
 	size := qs.Size()
+
+	// contruct a scan query
+	conn := goes.NewConnection("localhost", "9200")
+	var query map[string]interface{}
+	query = map[string]interface{}{
+		"query": map[string]interface{}{
+			"match_all": map[string]interface{}{},
+		},
+	}
+
+	r, err := conn.Scan(query, []string{"cayley"}, []string{""}, "30", 10000)
+	if err != nil {
+		log.Fatalln(err)
+	}
+
 	return &Iterator{
-		uid:   iterator.NextUID(),
-		qs:    qs,
-		size:  int64(size),
-		hash:  "",
-		isAll: true,
+		uid:          iterator.NextUID(),
+		qs:           qs,
+		size:         int64(size),
+		hash:         "",
+		isAll:        true,
+		scanResponse: r,
+		hits:         scrollWrap(r),
 	}
 }

@@ -75,7 +75,7 @@ func newQuadStore(_ string, _ graph.Options) (graph.QuadStore, error) {
 }
 
 func (qs *QuadStore) Size() int64 {
-	log.Println("requesting size")
+	log.Println("calling Size")
 	req, _ := http.Get("http://localhost:9200/cayley/_count")
 	var c map[string]interface{}
 	d := json.NewDecoder(req.Body)
@@ -130,6 +130,7 @@ func (qs *QuadStore) QuadIterator(d quad.Direction, val graph.Value) graph.Itera
 }
 
 func (qs *QuadStore) NodesAllIterator() graph.Iterator {
+	log.Println("calling NodesAllIterator")
 	return NewAllIterator(qs)
 }
 
@@ -138,10 +139,12 @@ func (qs *QuadStore) QuadsAllIterator() graph.Iterator {
 }
 
 func (qs *QuadStore) ValueOf(s string) graph.Value {
+	log.Println("calling ValueOf")
 	return nil
 }
 
 func (qs *QuadStore) NameOf(k graph.Value) string {
+	log.Println("calling NameOf")
 	return fmt.Sprintf("value: %s", k)
 }
 
