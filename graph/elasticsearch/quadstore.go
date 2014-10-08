@@ -76,9 +76,10 @@ func newQuadStore(_ string, _ graph.Options) (graph.QuadStore, error) {
 
 func (qs *QuadStore) Size() int64 {
 	log.Println("calling Size")
-	req, _ := http.Get("http://localhost:9200/cayley/_count")
+	resp, _ := http.Get("http://localhost:9200/cayley/_count")
+	defer resp.Body.Close()
 	var c map[string]interface{}
-	d := json.NewDecoder(req.Body)
+	d := json.NewDecoder(resp.Body)
 	d.UseNumber()
 
 	if err := d.Decode(&c); err != nil {
@@ -122,6 +123,7 @@ func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta) error {
 
 func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
 	var q quad.Quad
+	// http.Get(fmt.Sprintf("http://localhost:9200/cayley/spoc/%s", k)
 	return q
 }
 

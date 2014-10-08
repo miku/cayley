@@ -1,12 +1,15 @@
 package elasticsearch
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/belogik/goes"
 	"github.com/google/cayley/graph"
 	"github.com/google/cayley/graph/iterator"
+	"github.com/google/cayley/quad"
 )
 
 func init() {
@@ -152,6 +155,58 @@ func scrollWrap(r goes.Response) chan goes.Hit {
 		close(hits)
 	}()
 	return hits
+}
+
+func NewIterator(qs *QuadStore, collection string, d quad.Direction, val graph.Value) *Iterator {
+	name := qs.NameOf(val)
+
+	// get the size for the d/val
+	query := fmt.Sprintf(`{"query" : {"term" : { "%s" : "%s" }}}`, d.String(), name)
+	url := fmt.Sprintf(`http://localhost:9200/cayley/%s/_count' -d '%s'`, collection, query)
+	resp, err := http.Get(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	var c map[string]interface{}
+	decoder := json.NewDecoder(resp.Body)
+	decoder.UseNumber()
+
+	if err := decoder.Decode(&c); err != nil {
+		log.Fatal(err)
+	}
+
+	var size int64
+	switch t := c["count"].(type) {
+	case json.Number:
+		n, err := t.Int64()
+		if err == nil {
+			size = n
+		}
+	}
+	log.Println(size)
+
+	// constraint := bson.M{d.String(): name}
+	// size, err := qs.db.C(collection).Find(constraint).Count()
+
+	// if err != nil {
+	// 	// FIXME(kortschak) This should be passed back rather than just logging.
+	// 	glog.Errorln("Trouble getting size for iterator! ", err)
+	// 	return nil
+	// }
+	return &Iterator{}
+	// return &Iterator{
+	// 	uid:        iterator.NextUID(),
+	// 	name:       name,
+	// 	constraint: constraint,
+	// 	collection: collection,
+	// 	qs:         qs,
+	// 	dir:        d,
+	// 	iter:       qs.db.C(collection).Find(constraint).Iter(),
+	// 	size:       int64(size),
+	// 	hash:       val.(string),
+	// 	isAll:      false,
+	// }
 }
 
 func NewAllIterator(qs *QuadStore) *Iterator {
