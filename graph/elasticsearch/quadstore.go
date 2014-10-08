@@ -5,7 +5,7 @@ package elasticsearch
 import (
 	"bytes"
 	"crypto/sha1"
-	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"hash"
@@ -37,27 +37,30 @@ type QuadStore struct {
 	name string
 }
 
+type Document struct {
+	Subject   string `json:"s"`
+	Predicate string `json:"p"`
+	Object    string `json:"o"`
+	Label     string `json:"c"`
+}
+
 func (t Token) Key() interface{} {
 	return string(t)
 }
 
-func hashOf(s string) []byte {
+func hashOf(s string) string {
 	h := hashPool.Get().(hash.Hash)
 	h.Reset()
 	defer hashPool.Put(h)
 	key := make([]byte, 0, hashSize)
 	h.Write([]byte(s))
 	key = h.Sum(key)
-	return key
-}
-
-func hexDigest(b []byte) string {
-	return base64.URLEncoding.EncodeToString(b)
+	return hex.EncodeToString(key)
 }
 
 func (qs *QuadStore) createDocId(q quad.Quad) string {
 	s := fmt.Sprintf("%s:%s:%s:%s", q.Subject, q.Predicate, q.Object, q.Label)
-	return hexDigest(hashOf(s))
+	return hashOf(s)
 }
 
 func createNewIndex(_ string, _ graph.Options) error {
@@ -121,9 +124,21 @@ func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta) error {
 	return nil
 }
 
+// Quad returns a quad for a document ID (hashed)
 func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
-	var q quad.Quad
-	// http.Get(fmt.Sprintf("http://localhost:9200/cayley/spoc/%s", k)
+	url := fmt.Sprintf("http://localhost:9200/cayley/spoc/%s", k.(string))
+	req, _ := http.Get(url)
+	var doc Document
+	d := json.NewDecoder(req.Body)
+
+	if err := d.Decode(&doc); err != nil {
+		log.Fatal(err)
+	}
+
+	q := quad.Quad{Subject: doc.Subject,
+		Predicate: doc.Predicate,
+		Object:    doc.Object,
+		Label:     doc.Label}
 	return q
 }
 
@@ -140,14 +155,16 @@ func (qs *QuadStore) QuadsAllIterator() graph.Iterator {
 	return nil
 }
 
+// ValueOf returns the interal value (maybe we can just pass it on?)
 func (qs *QuadStore) ValueOf(s string) graph.Value {
-	log.Println("calling ValueOf")
-	return nil
+	log.Printf("calling ValueOf(%s)\n", s)
+	return s
 }
 
+// NameOf turns a internal value to an external string (pass on?)
 func (qs *QuadStore) NameOf(k graph.Value) string {
-	log.Println("calling NameOf")
-	return fmt.Sprintf("value: %s", k)
+	log.Printf("calling NameOf(%+v)\n", k)
+	return k.(string)
 }
 
 func (qs *QuadStore) Horizon() int64 {
