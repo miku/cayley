@@ -27,8 +27,6 @@ var (
 		New: func() interface{} { return sha1.New() },
 	}
 	hashSize = sha1.Size
-
-	spo = [4]quad.Direction{quad.Subject, quad.Predicate, quad.Object, quad.Label}
 )
 
 type Token []byte
@@ -57,6 +55,8 @@ func hashOf(s string) string {
 	key = h.Sum(key)
 	return hex.EncodeToString(key)
 }
+
+
 
 func (qs *QuadStore) createDocId(q quad.Quad) string {
 	s := fmt.Sprintf("%s:%s:%s:%s", q.Subject, q.Predicate, q.Object, q.Label)
