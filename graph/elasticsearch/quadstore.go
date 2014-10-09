@@ -56,7 +56,7 @@ func hashOf(s string) string {
 	return hex.EncodeToString(key)
 }
 
-func (qs *QuadStore) createDocId(q quad.Quad) string {
+func createDocId(q quad.Quad) string {
 	s := fmt.Sprintf("%s%s%s%s", q.Subject, q.Predicate, q.Object, q.Label)
 	return hashOf(s)
 }
@@ -94,50 +94,65 @@ func documentCount(index, docType string) int64 {
 	return 0
 }
 
-func (qs *QuadStore) Size() int64 {
-	log.Println("calling Size")
-	return documentCount("cayley", "spoc")
-}
-
-func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta) error {
-	for i, d := range deltas {
-		// TODO: batch updates
-		doc := map[string]string{
-			"s": d.Quad.Subject,
-			"p": d.Quad.Predicate,
-			"o": d.Quad.Object,
-			"c": d.Quad.Label,
-		}
-		payload, err := json.Marshal(doc)
-		if err != nil {
-			log.Fatal(err)
-		}
-		id := qs.createDocId(d.Quad)
-		fmt.Printf("%d, %s\n", i, id)
-		url := fmt.Sprintf("http://localhost:9200/cayley/spoc/%s", id)
-		_, err = http.Post(url, "application/json", bytes.NewBuffer(payload))
-		if err != nil {
-			return err
-		}
+func getQuadForID(index, docType, id string) (quad.Quad, error) {
+	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", index, docType, id)
+	req, err := http.Get(url)
+	if err != nil {
+		return quad.Quad{}, err
 	}
-	return nil
-}
-
-// Quad returns a quad for a document ID (hashed)
-func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
-	url := fmt.Sprintf("http://localhost:9200/cayley/spoc/%s", k.(string))
-	req, _ := http.Get(url)
 	var doc Document
 	d := json.NewDecoder(req.Body)
-
 	if err := d.Decode(&doc); err != nil {
-		log.Fatal(err)
+		return quad.Quad{}, err
 	}
 
 	q := quad.Quad{Subject: doc.Subject,
 		Predicate: doc.Predicate,
 		Object:    doc.Object,
 		Label:     doc.Label}
+	return q, nil
+}
+
+func indexQuad(index, docType string, q quad.Quad) error {
+	doc := map[string]string{
+		"s": q.Subject,
+		"p": q.Predicate,
+		"o": q.Object,
+		"c": q.Label,
+	}
+	payload, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	id := createDocId(q)
+	log.Printf("indexing %s\n", id)
+	url := fmt.Sprintf("http://localhost:9200/cayley/spoc/%s", id)
+	_, err = http.Post(url, "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (qs *QuadStore) Size() int64 {
+	log.Println("calling Size")
+	return documentCount("cayley", "spoc")
+}
+
+func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta) error {
+	for _, d := range deltas {
+		// TODO: batch updates plus parallel indexing
+		indexQuad("cayley", "spoc", d.Quad)
+	}
+	return nil
+}
+
+// Quad returns a quad for a document ID (hashed)
+func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
+	q, err := getQuadForID("cayley", "spoc", k.(string))
+	if err != nil {
+		log.Fatal(err)
+	}
 	return q
 }
 
@@ -194,7 +209,7 @@ func main() {
 	fmt.Println(qs.Size())
 	fmt.Println(hashOf("Hello"))
 	fact := quad.Quad{Subject: "Eos", Predicate: "daughter", Object: "Zeus"}
-	id := qs.createDocId(fact)
+	id := createDocId(fact)
 	fmt.Println(id)
 
 }
