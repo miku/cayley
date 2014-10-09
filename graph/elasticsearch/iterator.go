@@ -28,7 +28,7 @@ type Iterator struct {
 	result   graph.Value
 	isAll    bool
 	response goes.Response
-	hits     chan goes.Hit
+	quads    []quad.Quad
 }
 
 func (it *Iterator) UID() uint64 {
@@ -65,11 +65,17 @@ func (it *Iterator) TagResults(dst map[string]graph.Value) {
 func (it *Iterator) Next() bool {
 	log.Println("calling Next")
 	// fmt.Println(<-it.hits)
-	hit := <-it.hits
-	log.Printf("<-hit: %+v\n", hit)
-	it.result = fmt.Sprintf("%s", hit.Source)
-	// it.result = fmt.Sprintf("result at offset: %d", it.offset)
-	if it.offset < 10 {
+	// hit := <-it.hits
+	// log.Printf("<-hit: %+v\n", hit)
+	// it.result = fmt.Sprintf("%s", hit.Source)
+	// // it.result = fmt.Sprintf("result at offset: %d", it.offset)
+	// if it.offset < 10 {
+	// 	it.offset++
+	// 	return true
+	// }
+	// return false
+	if int64(len(it.quads)) > it.offset {
+		it.result = fmt.Sprintf("%+v", it.quads[it.offset])
 		it.offset++
 		return true
 	}
@@ -138,28 +144,6 @@ func (it *Iterator) Stats() graph.IteratorStats {
 	}
 }
 
-func scrollWrap(r goes.Response) chan goes.Hit {
-	log.Printf("calling scrollWrap(%+v)\n", r)
-	hits := make(chan goes.Hit)
-	conn := goes.NewConnection("localhost", "9200")
-	go func() {
-		for {
-			scrollResponse, err := conn.Scroll(r.ScrollId, "30")
-			if err != nil {
-				log.Fatalln(err)
-			}
-			if len(scrollResponse.Hits.Hits) == 0 {
-				break
-			}
-			for _, hit := range scrollResponse.Hits.Hits {
-				hits <- hit
-			}
-		}
-		close(hits)
-	}()
-	return hits
-}
-
 func NewIterator(qs *QuadStore, index string, d quad.Direction, val graph.Value) *Iterator {
 	log.Printf("calling NewIterator(%+v, %s, %+v, %+v)\n", qs, index, d, val)
 	conn := goes.NewConnection("localhost", "9200")
@@ -175,21 +159,32 @@ func NewIterator(qs *QuadStore, index string, d quad.Direction, val graph.Value)
 		log.Fatalln(err)
 	}
 
+	var quads []quad.Quad
+
+	for _, hit := range r.Hits.Hits {
+		q := quad.Quad{Subject: hit.Source["s"].(string),
+			Predicate: hit.Source["p"].(string),
+			Object:    hit.Source["o"].(string),
+			Label:     hit.Source["c"].(string)}
+		quads = append(quads, q)
+	}
+
+	log.Printf("found: %d\n", len(quads))
+
 	return &Iterator{
 		uid:      iterator.NextUID(),
 		qs:       qs,
-		size:     10,
+		size:     int64(len(quads)),
 		hash:     "",
 		isAll:    true,
 		response: r,
-		hits:     scrollWrap(r),
+		quads:    quads,
 	}
 }
 
 func NewAllIterator(qs *QuadStore) *Iterator {
 	log.Printf("calling NewAllIterator(%v)\n", qs)
-	size := qs.Size()
-	// contruct a scan query
+
 	conn := goes.NewConnection("localhost", "9200")
 	query := map[string]interface{}{
 		"query": map[string]interface{}{
@@ -197,19 +192,30 @@ func NewAllIterator(qs *QuadStore) *Iterator {
 		},
 	}
 
-	log.Println(query)
-	r, err := conn.Scan(query, []string{"cayley"}, []string{""}, "30", 10000)
+	r, err := conn.Search(query, []string{"cayley"}, []string{}, url.Values{})
 	if err != nil {
 		log.Fatalln(err)
 	}
 
+	var quads []quad.Quad
+
+	for _, hit := range r.Hits.Hits {
+		q := quad.Quad{Subject: hit.Source["s"].(string),
+			Predicate: hit.Source["p"].(string),
+			Object:    hit.Source["o"].(string),
+			Label:     hit.Source["c"].(string)}
+		quads = append(quads, q)
+	}
+
+	log.Printf("found: %d\n", len(quads))
+
 	return &Iterator{
 		uid:      iterator.NextUID(),
 		qs:       qs,
-		size:     int64(size),
+		size:     int64(len(quads)),
 		hash:     "",
 		isAll:    true,
 		response: r,
-		hits:     scrollWrap(r),
+		quads:    quads,
 	}
 }
