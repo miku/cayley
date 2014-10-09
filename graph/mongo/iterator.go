@@ -16,6 +16,7 @@ package mongo
 
 import (
 	"fmt"
+	"log"
 
 	"github.com/barakmich/glog"
 	"gopkg.in/mgo.v2"
@@ -42,6 +43,7 @@ type Iterator struct {
 }
 
 func NewIterator(qs *QuadStore, collection string, d quad.Direction, val graph.Value) *Iterator {
+	log.Printf("NewIterator(%+v, %s, %+v, %v)\n", qs, collection, d, val)
 	name := qs.NameOf(val)
 
 	constraint := bson.M{d.String(): name}
@@ -68,6 +70,7 @@ func NewIterator(qs *QuadStore, collection string, d quad.Direction, val graph.V
 }
 
 func NewAllIterator(qs *QuadStore, collection string) *Iterator {
+	log.Printf("NewAllIterator(%+v, %s)\n", qs, collection)
 	size, err := qs.db.C(collection).Count()
 	if err != nil {
 		// FIXME(kortschak) This should be passed back rather than just logging.
@@ -128,12 +131,14 @@ func (it *Iterator) Clone() graph.Iterator {
 }
 
 func (it *Iterator) Next() bool {
+	log.Printf("Next()\n")
 	var result struct {
 		ID      string  `bson:"_id"`
 		Added   []int64 `bson:"Added"`
 		Deleted []int64 `bson:"Deleted"`
 	}
 	found := it.iter.Next(&result)
+	log.Printf("result = %+v\n", result)
 	if !found {
 		err := it.iter.Err()
 		if err != nil {
@@ -145,6 +150,7 @@ func (it *Iterator) Next() bool {
 		return it.Next()
 	}
 	it.result = result.ID
+	log.Printf("it.result = %+v\n", result.ID)
 	return true
 }
 
@@ -166,12 +172,14 @@ func (it *Iterator) SubIterators() []graph.Iterator {
 }
 
 func (it *Iterator) Contains(v graph.Value) bool {
+	log.Printf("Contains(%+v)\n", v)
 	graph.ContainsLogIn(it, v)
 	if it.isAll {
 		it.result = v
 		return graph.ContainsLogOut(it, v, true)
 	}
 	var offset int
+	log.Printf("it.dir = %+v\n", it.dir)
 	switch it.dir {
 	case quad.Subject:
 		offset = 0
@@ -183,6 +191,7 @@ func (it *Iterator) Contains(v graph.Value) bool {
 		offset = (hashSize * 2) * 3
 	}
 	val := v.(string)[offset : hashSize*2+offset]
+	log.Printf("val = %+v\n", val)
 	if val == it.hash {
 		it.result = v
 		return graph.ContainsLogOut(it, v, true)

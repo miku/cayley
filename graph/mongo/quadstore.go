@@ -18,6 +18,7 @@ import (
 	"crypto/sha1"
 	"encoding/hex"
 	"hash"
+	"log"
 	"sync"
 
 	"gopkg.in/mgo.v2"
@@ -276,22 +277,27 @@ func (qs *QuadStore) Quad(val graph.Value) quad.Quad {
 }
 
 func (qs *QuadStore) QuadIterator(d quad.Direction, val graph.Value) graph.Iterator {
+	log.Printf("QuadIterator()\n")
 	return NewIterator(qs, "quads", d, val)
 }
 
 func (qs *QuadStore) NodesAllIterator() graph.Iterator {
+	log.Printf("NodesAllIterator()\n")
 	return NewAllIterator(qs, "nodes")
 }
 
 func (qs *QuadStore) QuadsAllIterator() graph.Iterator {
+	log.Printf("QuadsAllIterator()\n")
 	return NewAllIterator(qs, "quads")
 }
 
 func (qs *QuadStore) ValueOf(s string) graph.Value {
+	log.Printf("ValueOf(%s) => %s\n", s, hashOf(s))
 	return hashOf(s)
 }
 
 func (qs *QuadStore) NameOf(v graph.Value) string {
+	// log.Printf("NameOf(%+v)\n", v)
 	val, ok := qs.ids.Get(v.(string))
 	if ok {
 		return val
@@ -302,6 +308,8 @@ func (qs *QuadStore) NameOf(v graph.Value) string {
 		glog.Errorf("Error: Couldn't retrieve node %s %v", v, err)
 	}
 	qs.ids.Put(v.(string), node.Name)
+
+	log.Printf("NameOf(%+v) => %s\n", v, node.Name)
 	return node.Name
 }
 
@@ -349,6 +357,7 @@ func (qs *QuadStore) QuadDirection(in graph.Value, d quad.Direction) graph.Value
 		offset = (hashSize * 2) * 3
 	}
 	val := in.(string)[offset : hashSize*2+offset]
+	log.Printf("QuadDirection(%+v, %+v) => %s\n", in, d, val)
 	return val
 }
 
