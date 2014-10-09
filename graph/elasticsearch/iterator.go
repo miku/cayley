@@ -3,6 +3,7 @@ package elasticsearch
 import (
 	"fmt"
 	"log"
+	"net/url"
 
 	"github.com/belogik/goes"
 	"github.com/google/cayley/graph"
@@ -17,17 +18,17 @@ func init() {
 var esType graph.Type
 
 type Iterator struct {
-	uid          uint64
-	tags         graph.Tagger
-	offset       int64
-	hash         string
-	name         string
-	qs           *QuadStore
-	size         int64
-	result       graph.Value
-	isAll        bool
-	scanResponse goes.Response
-	hits         chan goes.Hit
+	uid      uint64
+	tags     graph.Tagger
+	offset   int64
+	hash     string
+	name     string
+	qs       *QuadStore
+	size     int64
+	result   graph.Value
+	isAll    bool
+	response goes.Response
+	hits     chan goes.Hit
 }
 
 func (it *Iterator) UID() uint64 {
@@ -65,6 +66,7 @@ func (it *Iterator) Next() bool {
 	log.Println("calling Next")
 	// fmt.Println(<-it.hits)
 	hit := <-it.hits
+	log.Printf("<-hit: %+v\n", hit)
 	it.result = fmt.Sprintf("%s", hit.Source)
 	// it.result = fmt.Sprintf("result at offset: %d", it.offset)
 	if it.offset < 10 {
@@ -137,6 +139,7 @@ func (it *Iterator) Stats() graph.IteratorStats {
 }
 
 func scrollWrap(r goes.Response) chan goes.Hit {
+	log.Printf("calling scrollWrap(%+v)\n", r)
 	hits := make(chan goes.Hit)
 	conn := goes.NewConnection("localhost", "9200")
 	go func() {
@@ -158,35 +161,55 @@ func scrollWrap(r goes.Response) chan goes.Hit {
 }
 
 func NewIterator(qs *QuadStore, index string, d quad.Direction, val graph.Value) *Iterator {
-	size := documentCount(index, "spoc")
-	log.Println(size)
-	return &Iterator{}
+	log.Printf("calling NewIterator(%+v, %s, %+v, %+v)\n", qs, index, d, val)
+	conn := goes.NewConnection("localhost", "9200")
+	query := map[string]interface{}{
+		"query": map[string]interface{}{
+			"term": map[string]interface{}{
+				fmt.Sprintf("%s", string(d.Prefix())): fmt.Sprintf("%s", val.(string)),
+			},
+		},
+	}
+	r, err := conn.Search(query, []string{"cayley"}, []string{}, url.Values{})
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	return &Iterator{
+		uid:      iterator.NextUID(),
+		qs:       qs,
+		size:     10,
+		hash:     "",
+		isAll:    true,
+		response: r,
+		hits:     scrollWrap(r),
+	}
 }
 
 func NewAllIterator(qs *QuadStore) *Iterator {
+	log.Printf("calling NewAllIterator(%v)\n", qs)
 	size := qs.Size()
-
 	// contruct a scan query
 	conn := goes.NewConnection("localhost", "9200")
-	var query map[string]interface{}
-	query = map[string]interface{}{
+	query := map[string]interface{}{
 		"query": map[string]interface{}{
 			"match_all": map[string]interface{}{},
 		},
 	}
 
+	log.Println(query)
 	r, err := conn.Scan(query, []string{"cayley"}, []string{""}, "30", 10000)
 	if err != nil {
 		log.Fatalln(err)
 	}
 
 	return &Iterator{
-		uid:          iterator.NextUID(),
-		qs:           qs,
-		size:         int64(size),
-		hash:         "",
-		isAll:        true,
-		scanResponse: r,
-		hits:         scrollWrap(r),
+		uid:      iterator.NextUID(),
+		qs:       qs,
+		size:     int64(size),
+		hash:     "",
+		isAll:    true,
+		response: r,
+		hits:     scrollWrap(r),
 	}
 }

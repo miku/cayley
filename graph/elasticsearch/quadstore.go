@@ -46,6 +46,7 @@ func (t Token) Key() interface{} {
 	return string(t)
 }
 
+// hashOf returns the hexdigest of a given string
 func hashOf(s string) string {
 	h := hashPool.Get().(hash.Hash)
 	h.Reset()
@@ -56,11 +57,13 @@ func hashOf(s string) string {
 	return hex.EncodeToString(key)
 }
 
+// createDocId create a SHA1 hex id from a quad ("content-addressable")
 func createDocId(q quad.Quad) string {
 	s := fmt.Sprintf("%s%s%s%s", q.Subject, q.Predicate, q.Object, q.Label)
 	return hashOf(s)
 }
 
+// createNewIndex just PUTs a new es index
 func createNewIndex(_ string, _ graph.Options) error {
 	log.Println("creating new es index cayley")
 	req, _ := http.NewRequest("PUT", "http://localhost:9200/cayley", nil)
@@ -68,11 +71,13 @@ func createNewIndex(_ string, _ graph.Options) error {
 	return err
 }
 
+// newQuadStore is a dummy for now, struct should hold config (host, port, index, ...) later
 func newQuadStore(_ string, _ graph.Options) (graph.QuadStore, error) {
 	log.Println("creating new quad store")
 	return &QuadStore{name: "cayley"}, nil
 }
 
+// documentCount return the total doc count for index/docType
 func documentCount(index, docType string) int64 {
 	url := fmt.Sprintf("http://localhost:9200/%s/%s/_count", index, docType)
 	resp, _ := http.Get(url)
@@ -94,6 +99,7 @@ func documentCount(index, docType string) int64 {
 	return 0
 }
 
+// getQuadForID returns a Quad from the index for a given id (content-address)
 func getQuadForID(index, docType, id string) (quad.Quad, error) {
 	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", index, docType, id)
 	req, err := http.Get(url)
@@ -113,6 +119,7 @@ func getQuadForID(index, docType, id string) (quad.Quad, error) {
 	return q, nil
 }
 
+// indexQuad indexes a quad into the given index/docType ""
 func indexQuad(index, docType string, q quad.Quad) error {
 	doc := map[string]string{
 		"s": q.Subject,
@@ -126,7 +133,7 @@ func indexQuad(index, docType string, q quad.Quad) error {
 	}
 	id := createDocId(q)
 	log.Printf("indexing %s\n", id)
-	url := fmt.Sprintf("http://localhost:9200/cayley/spoc/%s", id)
+	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", index, docType, id)
 	_, err = http.Post(url, "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return err
@@ -134,11 +141,13 @@ func indexQuad(index, docType string, q quad.Quad) error {
 	return nil
 }
 
+// Size returns the number of quad stored
 func (qs *QuadStore) Size() int64 {
 	log.Println("calling Size")
 	return documentCount("cayley", "spoc")
 }
 
+// ApplyDeltas just indexes quads into the index (no log for now)
 func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta) error {
 	for _, d := range deltas {
 		// TODO: batch updates plus parallel indexing
@@ -157,7 +166,8 @@ func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
 }
 
 func (qs *QuadStore) QuadIterator(d quad.Direction, val graph.Value) graph.Iterator {
-	return nil
+	log.Println("calling QuadIterator")
+	return NewIterator(qs, "spoc", d, val)
 }
 
 func (qs *QuadStore) NodesAllIterator() graph.Iterator {
@@ -166,6 +176,7 @@ func (qs *QuadStore) NodesAllIterator() graph.Iterator {
 }
 
 func (qs *QuadStore) QuadsAllIterator() graph.Iterator {
+	log.Printf("calling QuadsAllIterator()\n")
 	return nil
 }
 
@@ -190,18 +201,26 @@ func compareBytes(a, b graph.Value) bool {
 }
 
 func (qs *QuadStore) FixedIterator() graph.FixedIterator {
-	return iterator.NewFixed(compareBytes)
+	log.Printf("calling FixedIterator()\n")
+	// return iterator.NewFixed(compareBytes)
+	return iterator.NewFixed(iterator.Identity)
 }
 
 func (qs *QuadStore) OptimizeIterator(it graph.Iterator) (graph.Iterator, bool) {
+	log.Printf("calling OptimizeIterator()\n")
 	return it, false
 }
 
 func (qs *QuadStore) Close() {
+	log.Printf("calling Close()\n")
 }
 
 func (qs *QuadStore) QuadDirection(val graph.Value, d quad.Direction) graph.Value {
-	return nil
+	q, err := getQuadForID("cayley", "spoc", val.(string))
+	if err != nil {
+		log.Fatal(err)
+	}
+	return q.Get(d)
 }
 
 func main() {
