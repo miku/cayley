@@ -56,40 +56,34 @@ func hashOf(s string) string {
 	return hex.EncodeToString(key)
 }
 
-
-
 func (qs *QuadStore) createDocId(q quad.Quad) string {
-	s := fmt.Sprintf("%s:%s:%s:%s", q.Subject, q.Predicate, q.Object, q.Label)
+	s := fmt.Sprintf("%s%s%s%s", q.Subject, q.Predicate, q.Object, q.Label)
 	return hashOf(s)
 }
 
 func createNewIndex(_ string, _ graph.Options) error {
 	log.Println("creating new es index cayley")
-	req, err := http.NewRequest("PUT", "http://localhost:9200/cayley", nil)
-	_, err = http.DefaultClient.Do(req)
+	req, _ := http.NewRequest("PUT", "http://localhost:9200/cayley", nil)
+	_, err := http.DefaultClient.Do(req)
 	return err
 }
 
 func newQuadStore(_ string, _ graph.Options) (graph.QuadStore, error) {
 	log.Println("creating new quad store")
-	var qs QuadStore
-	qs.name = "cayley"
-	return &qs, nil
+	return &QuadStore{name: "cayley"}, nil
 }
 
-func (qs *QuadStore) Size() int64 {
-	log.Println("calling Size")
-	resp, _ := http.Get("http://localhost:9200/cayley/_count")
+func documentCount(index, docType string) int64 {
+	url := fmt.Sprintf("http://localhost:9200/%s/%s/_count", index, docType)
+	resp, _ := http.Get(url)
 	defer resp.Body.Close()
 	var c map[string]interface{}
 	d := json.NewDecoder(resp.Body)
 	d.UseNumber()
-
 	if err := d.Decode(&c); err != nil {
 		log.Println(err)
 		return 0
 	}
-
 	switch t := c["count"].(type) {
 	case json.Number:
 		n, err := t.Int64()
@@ -98,6 +92,11 @@ func (qs *QuadStore) Size() int64 {
 		}
 	}
 	return 0
+}
+
+func (qs *QuadStore) Size() int64 {
+	log.Println("calling Size")
+	return documentCount("cayley", "spoc")
 }
 
 func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta) error {
