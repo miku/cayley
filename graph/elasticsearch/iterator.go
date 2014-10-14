@@ -29,6 +29,7 @@ type Iterator struct {
 	isAll    bool
 	response goes.Response
 	quads    []quad.Quad
+	values   []string
 }
 
 func (it *Iterator) UID() uint64 {
@@ -74,11 +75,19 @@ func (it *Iterator) Next() bool {
 	// 	return true
 	// }
 	// return false
-	if int64(len(it.quads)) > it.offset {
-		it.result = fmt.Sprintf("%+v", it.quads[it.offset])
+
+	// if int64(len(it.quads)) > it.offset {
+	// 	it.result = fmt.Sprintf("%+v", it.quads[it.offset])
+	// 	it.offset++
+	// 	return true
+	// }
+
+	if int64(len(it.values)) > it.offset {
+		it.result = fmt.Sprintf("%s", it.values[it.offset])
 		it.offset++
 		return true
 	}
+
 	return false
 }
 
@@ -192,30 +201,37 @@ func NewAllIterator(qs *QuadStore) *Iterator {
 		},
 	}
 
-	r, err := conn.Search(query, []string{"cayley"}, []string{}, url.Values{})
+	r, err := conn.Search(query, []string{"cayley"}, []string{"node"}, url.Values{})
 	if err != nil {
 		log.Fatalln(err)
 	}
 
-	var quads []quad.Quad
+	// var quads []quad.Quad
+
+	// for _, hit := range r.Hits.Hits {
+	// 	q := quad.Quad{Subject: hit.Source["s"].(string),
+	// 		Predicate: hit.Source["p"].(string),
+	// 		Object:    hit.Source["o"].(string),
+	// 		Label:     hit.Source["c"].(string)}
+	// 	quads = append(quads, q)
+	// }
+
+	var values []string
 
 	for _, hit := range r.Hits.Hits {
-		q := quad.Quad{Subject: hit.Source["s"].(string),
-			Predicate: hit.Source["p"].(string),
-			Object:    hit.Source["o"].(string),
-			Label:     hit.Source["c"].(string)}
-		quads = append(quads, q)
+		values = append(values, hit.Source["name"].(string))
 	}
 
-	log.Printf("found: %d\n", len(quads))
+	log.Printf("found: %d\n", len(values))
 
 	return &Iterator{
 		uid:      iterator.NextUID(),
 		qs:       qs,
-		size:     int64(len(quads)),
+		size:     int64(len(values)),
 		hash:     "",
 		isAll:    true,
 		response: r,
-		quads:    quads,
+		// quads:    quads,
+		values: values,
 	}
 }

@@ -132,7 +132,25 @@ func indexQuad(index, docType string, q quad.Quad) error {
 		return err
 	}
 	id := createDocId(q)
-	log.Printf("indexing %s\n", id)
+	log.Printf("indexing doc: %s\n", id)
+	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", index, docType, id)
+	_, err = http.Post(url, "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func indexNode(index, docType, node string) error {
+	doc := map[string]string{
+		"name": node,
+	}
+	payload, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	id := hashOf(node)
+	log.Printf("indexing node: %s\n", id)
 	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", index, docType, id)
 	_, err = http.Post(url, "application/json", bytes.NewBuffer(payload))
 	if err != nil {
@@ -152,6 +170,10 @@ func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta) error {
 	for _, d := range deltas {
 		// TODO: batch updates plus parallel indexing
 		indexQuad("cayley", "spoc", d.Quad)
+		indexNode("cayley", "node", d.Quad.Subject)
+		indexNode("cayley", "node", d.Quad.Predicate)
+		indexNode("cayley", "node", d.Quad.Object)
+		indexNode("cayley", "node", d.Quad.Label)
 	}
 	return nil
 }
