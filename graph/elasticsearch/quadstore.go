@@ -32,7 +32,9 @@ var (
 type Token []byte
 
 type QuadStore struct {
-	name string
+	indexName string
+	quadType  string
+	nodeType  string
 }
 
 type Document struct {
@@ -57,30 +59,34 @@ func hashOf(s string) string {
 	return hex.EncodeToString(key)
 }
 
-// createDocId create a SHA1 hex id from a quad ("content-addressable")
-func createDocId(q quad.Quad) string {
-	s := fmt.Sprintf("%s%s%s%s", q.Subject, q.Predicate, q.Object, q.Label)
-	return hashOf(s)
-}
-
-// createNewIndex just PUTs a new es index
+// createNewIndex just PUTs a new elasticsearch index
 func createNewIndex(_ string, _ graph.Options) error {
+	// TODO: get options from config
 	log.Println("creating new es index cayley")
 	req, _ := http.NewRequest("PUT", "http://localhost:9200/cayley", nil)
-	_, err := http.DefaultClient.Do(req)
-	return err
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
 }
 
 // newQuadStore is a dummy for now, struct should hold config (host, port, index, ...) later
 func newQuadStore(_ string, _ graph.Options) (graph.QuadStore, error) {
-	log.Println("creating new quad store")
-	return &QuadStore{name: "cayley"}, nil
+	// TODO: get options from config
+	qs := QuadStore{indexName: "cayley", quadType: "quads", nodeType: "nodes"}
+	log.Printf("initialized new quad store: %+v\n", qs)
+	return &qs, nil
 }
 
-// documentCount return the total doc count for index/docType
-func documentCount(index, docType string) int64 {
-	url := fmt.Sprintf("http://localhost:9200/%s/%s/_count", index, docType)
-	resp, _ := http.Get(url)
+// DocumentCount return the total number of quads indexed
+func (qs *QuadStore) DocumentCount() int64 {
+	url := fmt.Sprintf("http://localhost:9200/%s/%s/_count", qs.indexName, qs.quadType)
+	resp, err := http.Get(url)
+	if err != nil {
+		return 0
+	}
 	defer resp.Body.Close()
 	var c map[string]interface{}
 	d := json.NewDecoder(resp.Body)
@@ -99,15 +105,16 @@ func documentCount(index, docType string) int64 {
 	return 0
 }
 
-// getQuadForID returns a Quad from the index for a given id (content-address)
-func getQuadForID(index, docType, id string) (quad.Quad, error) {
-	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", index, docType, id)
-	req, err := http.Get(url)
+// GetQuadForID returns a Quad from the index for a given id (content-address)
+func (qs *QuadStore) GetQuadForID(id string) (quad.Quad, error) {
+	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", qs.indexName, qs.quadType, id)
+	resp, err := http.Get(url)
 	if err != nil {
 		return quad.Quad{}, err
 	}
+	defer resp.Body.Close()
 	var doc Document
-	d := json.NewDecoder(req.Body)
+	d := json.NewDecoder(resp.Body)
 	if err := d.Decode(&doc); err != nil {
 		return quad.Quad{}, err
 	}
@@ -119,8 +126,27 @@ func getQuadForID(index, docType, id string) (quad.Quad, error) {
 	return q, nil
 }
 
-// indexQuad indexes a quad into the given index/docType ""
-func indexQuad(index, docType string, q quad.Quad) error {
+func (qs *QuadStore) IndexNode(node string) error {
+	doc := map[string]string{
+		"name": node,
+	}
+	payload, err := json.Marshal(doc)
+	if err != nil {
+		return err
+	}
+	id := hashOf(node)
+	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", qs.indexName, qs.nodeType, id)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	// log.Printf("indexed node: %s\n", id)
+	return nil
+}
+
+// IndexQuad indexes a quad into the given index/docType ""
+func (qs *QuadStore) IndexQuad(q quad.Quad) error {
 	doc := map[string]string{
 		"s": q.Subject,
 		"p": q.Predicate,
@@ -131,56 +157,48 @@ func indexQuad(index, docType string, q quad.Quad) error {
 	if err != nil {
 		return err
 	}
-	id := createDocId(q)
-	log.Printf("indexing doc: %s\n", id)
-	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", index, docType, id)
-	_, err = http.Post(url, "application/json", bytes.NewBuffer(payload))
+	id := qs.GetIDForQuad(q)
+	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", qs.indexName, qs.quadType, id)
+	resp, err := http.Post(url, "application/json", bytes.NewBuffer(payload))
 	if err != nil {
 		return err
 	}
+	defer resp.Body.Close()
+	// log.Printf("indexed quad: %s\n", id)
 	return nil
 }
 
-func indexNode(index, docType, node string) error {
-	doc := map[string]string{
-		"name": node,
-	}
-	payload, err := json.Marshal(doc)
-	if err != nil {
-		return err
-	}
-	id := hashOf(node)
-	log.Printf("indexing node: %s\n", id)
-	url := fmt.Sprintf("http://localhost:9200/%s/%s/%s", index, docType, id)
-	_, err = http.Post(url, "application/json", bytes.NewBuffer(payload))
-	if err != nil {
-		return err
-	}
-	return nil
+func (qs *QuadStore) GetIDForQuad(t quad.Quad) string {
+	id := hashOf(t.Subject)
+	id += hashOf(t.Predicate)
+	id += hashOf(t.Object)
+	id += hashOf(t.Label)
+	return id
 }
 
 // Size returns the number of quad stored
 func (qs *QuadStore) Size() int64 {
 	log.Println("calling Size")
-	return documentCount("cayley", "spoc")
+	return qs.DocumentCount()
 }
 
 // ApplyDeltas just indexes quads into the index (no log for now)
 func (qs *QuadStore) ApplyDeltas(deltas []graph.Delta) error {
-	for _, d := range deltas {
+	for i, d := range deltas {
+		fmt.Println(i)
 		// TODO: batch updates plus parallel indexing
-		indexQuad("cayley", "spoc", d.Quad)
-		indexNode("cayley", "node", d.Quad.Subject)
-		indexNode("cayley", "node", d.Quad.Predicate)
-		indexNode("cayley", "node", d.Quad.Object)
-		indexNode("cayley", "node", d.Quad.Label)
+		qs.IndexQuad(d.Quad)
+		qs.IndexNode(d.Quad.Subject)
+		qs.IndexNode(d.Quad.Predicate)
+		qs.IndexNode(d.Quad.Object)
+		qs.IndexNode(d.Quad.Label)
 	}
 	return nil
 }
 
 // Quad returns a quad for a document ID (hashed)
 func (qs *QuadStore) Quad(k graph.Value) quad.Quad {
-	q, err := getQuadForID("cayley", "spoc", k.(string))
+	q, err := qs.GetQuadForID(k.(string))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -238,19 +256,9 @@ func (qs *QuadStore) Close() {
 }
 
 func (qs *QuadStore) QuadDirection(val graph.Value, d quad.Direction) graph.Value {
-	q, err := getQuadForID("cayley", "spoc", val.(string))
+	q, err := qs.GetQuadForID(val.(string))
 	if err != nil {
 		log.Fatal(err)
 	}
 	return q.Get(d)
-}
-
-func main() {
-	qs := QuadStore{name: "cayley"}
-	fmt.Println(qs.Size())
-	fmt.Println(hashOf("Hello"))
-	fact := quad.Quad{Subject: "Eos", Predicate: "daughter", Object: "Zeus"}
-	id := createDocId(fact)
-	fmt.Println(id)
-
 }

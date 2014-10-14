@@ -201,20 +201,10 @@ func NewAllIterator(qs *QuadStore) *Iterator {
 		},
 	}
 
-	r, err := conn.Search(query, []string{"cayley"}, []string{"node"}, url.Values{})
+	r, err := conn.Search(query, []string{qs.indexName}, []string{qs.nodeType}, url.Values{})
 	if err != nil {
 		log.Fatalln(err)
 	}
-
-	// var quads []quad.Quad
-
-	// for _, hit := range r.Hits.Hits {
-	// 	q := quad.Quad{Subject: hit.Source["s"].(string),
-	// 		Predicate: hit.Source["p"].(string),
-	// 		Object:    hit.Source["o"].(string),
-	// 		Label:     hit.Source["c"].(string)}
-	// 	quads = append(quads, q)
-	// }
 
 	var values []string
 
@@ -231,7 +221,6 @@ func NewAllIterator(qs *QuadStore) *Iterator {
 		hash:     "",
 		isAll:    true,
 		response: r,
-		// quads:    quads,
-		values: values,
+		values:   values,
 	}
 }
